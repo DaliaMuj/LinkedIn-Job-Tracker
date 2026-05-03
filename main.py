@@ -51,17 +51,21 @@ def get_details(link):
         r = requests.get(link, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
 
-        values = [
-            v.text.strip()
-            for v in soup.select(".description__job-criteria-text--criteria")
-        ]
+        def get_nth(n):
+            item = soup.select_one(
+                f".description__job-criteria-item:nth-of-type({n}) "
+                ".description__job-criteria-text--criteria"
+            )
+            return item.text.strip() if item else None
 
-        # fallback safe
+        desc = soup.select_one(".description__text")
+
         return {
-            "seniority": values[0] if len(values) > 0 else None,
-            "employment": values[1] if len(values) > 1 else None,
-            "function": values[2] if len(values) > 2 else None,
-            "industry": values[3] if len(values) > 3 else None,
+            "description": desc.text.strip() if desc else None,
+            "seniority": get_nth(1),
+            "employment": get_nth(2),
+            "function": get_nth(3),
+            "industry": get_nth(4),
         }
 
     except Exception as e:
