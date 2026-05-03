@@ -55,32 +55,23 @@ def get_details(link):
             el = soup.select_one(css)
             return el.text.strip() if el else None
 
+        # primary (nth)
+        seniority = sel(".description__job-criteria-item:nth-child(1) .description__job-criteria-text--criteria")
+        employment = sel(".description__job-criteria-item:nth-child(2) .description__job-criteria-text--criteria")
+        function = sel(".description__job-criteria-item:nth-child(3) .description__job-criteria-text--criteria")
+        industry = sel(".description__job-criteria-item:nth-child(4) .description__job-criteria-text--criteria")
+
+        # fallback dacă lipsesc
+        values = [v.text.strip() for v in soup.select(".description__job-criteria-text--criteria")]
+
         return {
-            "description": sel(".description__text"),
-
-            "seniority": sel(
-                ".description__job-criteria-item:nth-child(1) "
-                ".description__job-criteria-text--criteria"
-            ),
-
-            "employment": sel(
-                ".description__job-criteria-item:nth-child(2) "
-                ".description__job-criteria-text--criteria"
-            ),
-
-            "function": sel(
-                ".description__job-criteria-item:nth-child(3) "
-                ".description__job-criteria-text--criteria"
-            ),
-
-            "industry": sel(
-                ".description__job-criteria-item:nth-child(4) "
-                ".description__job-criteria-text--criteria"
-            ),
+            "seniority": seniority or (values[0] if len(values)>0 else None),
+            "employment": employment or (values[1] if len(values)>1 else None),
+            "function": function or (values[2] if len(values)>2 else None),
+            "industry": industry or (values[3] if len(values)>3 else None),
         }
 
-    except Exception as e:
-        print("Error:", e)
+    except:
         return {}
 
 
