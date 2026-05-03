@@ -18,7 +18,6 @@ URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 # -----------------------------
 def get_jobs(start):
     params = {
-        "keywords": "data",
         "location": "Romania",
         "f_TPR": "r2592000",
         "start": start
