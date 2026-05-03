@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import time
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -12,71 +13,108 @@ HEADERS = {
 URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 
 
+# -----------------------------
+# GET JOB LIST
+# -----------------------------
 def get_jobs(start):
     params = {
         "keywords": "data",
         "location": "Romania",
-        "f_TPR": "r2592000",  # 30 days
+        "f_TPR": "r2592000",
         "start": start
     }
 
+    r = requests.get(URL, params=params, headers=HEADERS, timeout=10)
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    cards = soup.select(".base-card")
+
+    jobs = []
+
+    for job in cards:
+        jobs.append({
+            "title": job.select_one(".base-search-card__title").text.strip() if job.select_one(".base-search-card__title") else None,
+            "company": job.select_one(".base-search-card__subtitle").text.strip() if job.select_one(".base-search-card__subtitle") else None,
+            "location": job.select_one(".job-search-card__location").text.strip() if job.select_one(".job-search-card__location") else None,
+            "date": job.select_one("time")["datetime"] if job.select_one("time") else None,
+            "link": job.select_one("a")["href"] if job.select_one("a") else None
+        })
+
+    return jobs
+
+
+# -----------------------------
+# GET JOB DETAILS
+# -----------------------------
+def get_details(link):
     try:
-        r = requests.get(URL, params=params, headers=HEADERS, timeout=10)
-
-        if r.status_code != 200:
-            print("❌ Failed:", r.status_code)
-            return []
-
+        r = requests.get(link, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
-        cards = soup.select(".base-card")
 
-        print(f"📦 Page {start} → {len(cards)} jobs")
+        data = {
+            "seniority": None,
+            "employment": None,
+            "function": None,
+            "industry": None
+        }
 
-        jobs = []
+        for item in soup.select(".description__job-criteria-item"):
+            label = item.select_one(".description__job-criteria-subheader")
+            value = item.select_one(".description__job-criteria-text--criteria")
 
-        for job in cards:
-            title = job.select_one(".base-search-card__title")
-            company = job.select_one(".base-search-card__subtitle")
-            location = job.select_one(".job-search-card__location")
-            time_tag = job.select_one("time")
-            link = job.select_one("a")
+            if not label or not value:
+                continue
 
-            jobs.append({
-                "title": title.text.strip() if title else None,
-                "company": company.text.strip() if company else None,
-                "location": location.text.strip() if location else None,
-                "date": time_tag["datetime"] if time_tag else None,
-                "link": link["href"] if link else None
-            })
+            l = label.text.lower()
+            v = value.text.strip()
 
-        return jobs
+            if "senior" in l:
+                data["seniority"] = v
+            elif "employment" in l:
+                data["employment"] = v
+            elif "function" in l:
+                data["function"] = v
+            elif "industr" in l:
+                data["industry"] = v
 
-    except Exception as e:
-        print("❌ Error:", e)
-        return []
+        return data
+
+    except:
+        return {}
 
 
+# -----------------------------
+# MAIN
+# -----------------------------
 def run():
     os.makedirs("data", exist_ok=True)
 
     all_jobs = []
 
-    # ✔️ corect pagination
     for start in [0, 25, 50]:
         all_jobs.extend(get_jobs(start))
-        time.sleep(2)  # important
-
-    print("🔢 Total jobs:", len(all_jobs))
+        time.sleep(2)
 
     df = pd.DataFrame(all_jobs)
 
-    if df.empty:
-        print("⚠️ No data extracted!")
-        return
+    print("Jobs:", len(df))
 
-    df.to_csv("data/jobs.csv", index=False)
+    # 🔥 IMPORTANT: limităm pentru speed
+    df_details = df.head(20).copy()
 
-    print("✅ Saved CSV")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        details = list(executor.map(get_details, df_details["link"]))
+
+    details_df = pd.DataFrame(details)
+
+    df_details = pd.concat([df_details, details_df], axis=1)
+
+    # 🔥 combinăm înapoi
+    final_df = df.merge(df_details, how="left", on=["title", "company", "location", "date", "link"])
+
+    final_df.to_csv("data/jobs.csv", index=False)
+
+    print("Saved with details")
 
 
 if __name__ == "__main__":
