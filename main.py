@@ -51,35 +51,21 @@ def get_details(link):
         r = requests.get(link, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
 
-        data = {
-            "seniority": None,
-            "employment": None,
-            "function": None,
-            "industry": None
+        values = [
+            v.text.strip()
+            for v in soup.select(".description__job-criteria-text--criteria")
+        ]
+
+        # fallback safe
+        return {
+            "seniority": values[0] if len(values) > 0 else None,
+            "employment": values[1] if len(values) > 1 else None,
+            "function": values[2] if len(values) > 2 else None,
+            "industry": values[3] if len(values) > 3 else None,
         }
 
-        for item in soup.select(".description__job-criteria-item"):
-            label = item.select_one(".description__job-criteria-subheader")
-            value = item.select_one(".description__job-criteria-text--criteria")
-
-            if not label or not value:
-                continue
-
-            l = label.text.lower()
-            v = value.text.strip()
-
-            if "senior" in l:
-                data["seniority"] = v
-            elif "employment" in l:
-                data["employment"] = v
-            elif "function" in l:
-                data["function"] = v
-            elif "industr" in l:
-                data["industry"] = v
-
-        return data
-
-    except:
+    except Exception as e:
+        print("Error:", e)
         return {}
 
 
