@@ -28,8 +28,8 @@ def get_jobs_until_limit():
         print(f"Fetching page: {start}")
 
         params = {
-            #"keywords": "data",       # 🔥 IMPORTANT
-            "location": "Romania",
+            "keywords": "data OR analyst OR engineer OR software OR business OR scientist OR AI OR machine OR learning",       # 🔥 IMPORTANT
+            "location": "Europe",
             "start": start
         }
 
