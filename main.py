@@ -2,111 +2,78 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
-import os
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0",
     "Accept-Language": "en-US,en;q=0.9"
 }
 
 URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 
-
-# -----------------------------
-# GET JOB LIST
-# -----------------------------
-def get_jobs(start):
-    params = {
-        "keywords": "data",
-        "location": "Romania",
-        "f_TPR": "r2592000",
-        "start": start
-    }
-
-    r = requests.get(URL, params=params, headers=HEADERS, timeout=10)
-
-    soup = BeautifulSoup(r.text, "html.parser")
-    cards = soup.select(".base-card")
-
-    jobs = []
-
-    for job in cards:
-        jobs.append({
-            "title": job.select_one(".base-search-card__title").text.strip() if job.select_one(".base-search-card__title") else None,
-            "company": job.select_one(".base-search-card__subtitle").text.strip() if job.select_one(".base-search-card__subtitle") else None,
-            "location": job.select_one(".job-search-card__location").text.strip() if job.select_one(".job-search-card__location") else None,
-            "date": job.select_one("time")["datetime"] if job.select_one("time") else None,
-            "link": job.select_one("a")["href"] if job.select_one("a") else None
-        })
-
-    return jobs
+DAYS_LIMIT = 7
+cutoff_date = datetime.utcnow() - timedelta(days=DAYS_LIMIT)
 
 
-# -----------------------------
-# GET JOB DETAILS
-# -----------------------------
-def get_details(link):
-    try:
-        r = requests.get(link, headers=HEADERS, timeout=10)
-        soup = BeautifulSoup(r.text, "html.parser")
+def get_jobs_until_limit():
+    all_jobs = []
+    start = 0
 
-        def sel(css):
-            el = soup.select_one(css)
-            return el.text.strip() if el else None
+    while True:
+        print(f"Fetching page: {start}")
 
-        # primary (nth)
-        seniority = sel(".description__job-criteria-item:nth-child(1) .description__job-criteria-text--criteria")
-        employment = sel(".description__job-criteria-item:nth-child(2) .description__job-criteria-text--criteria")
-        function = sel(".description__job-criteria-item:nth-child(3) .description__job-criteria-text--criteria")
-        industry = sel(".description__job-criteria-item:nth-child(4) .description__job-criteria-text--criteria")
-
-        # fallback dacă lipsesc
-        values = [v.text.strip() for v in soup.select(".description__job-criteria-text--criteria")]
-
-        return {
-            "seniority": seniority or (values[0] if len(values)>0 else None),
-            "employment": employment or (values[1] if len(values)>1 else None),
-            "function": function or (values[2] if len(values)>2 else None),
-            "industry": industry or (values[3] if len(values)>3 else None),
+        params = {
+            "keywords": "data",
+            "location": "Romania",
+            "start": start
         }
 
-    except:
-        return {}
+        r = requests.get(URL, params=params, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        cards = soup.select(".base-card")
+
+        if not cards:
+            print("No more jobs")
+            break
+
+        stop = False
+
+        for job in cards:
+            time_tag = job.select_one("time")
+
+            if not time_tag:
+                continue
+
+            job_date = datetime.fromisoformat(time_tag["datetime"].replace("Z", ""))
+
+            # 🔥 STOP CONDITION
+            if job_date < cutoff_date:
+                stop = True
+                break
+
+            all_jobs.append({
+                "title": job.select_one(".base-search-card__title").text.strip(),
+                "company": job.select_one(".base-search-card__subtitle").text.strip(),
+                "location": job.select_one(".job-search-card__location").text.strip(),
+                "date": job_date,
+                "link": job.select_one("a")["href"]
+            })
+
+        if stop:
+            print("Reached 7-day limit")
+            break
+
+        start += 25
+        time.sleep(1)
+
+    return pd.DataFrame(all_jobs)
 
 
-# -----------------------------
-# MAIN
-# -----------------------------
 def run():
-    os.makedirs("data", exist_ok=True)
-
-    all_jobs = []
-
-    for start in [0, 25, 50]:
-        all_jobs.extend(get_jobs(start))
-        time.sleep(2)
-
-    df = pd.DataFrame(all_jobs)
-
-    print("Jobs:", len(df))
-
-    # 🔥 IMPORTANT: limităm pentru speed
-    df_details = df.head(20).copy()
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        details = list(executor.map(get_details, df_details["link"]))
-
-    details_df = pd.DataFrame(details)
-
-    df_details = pd.concat([df_details, details_df], axis=1)
-
-    # 🔥 combinăm înapoi
-    final_df = df.merge(df_details, how="left", on=["title", "company", "location", "date", "link"])
-
-    final_df.to_csv("data/jobs.csv", index=False)
-
-    print("Saved with details")
+    df = get_jobs_until_limit()
+    print("Total jobs:", len(df))
+    df.to_csv("jobs_7_days.csv", index=False)
 
 
 if __name__ == "__main__":
