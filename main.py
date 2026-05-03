@@ -16,31 +16,42 @@ URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 # -----------------------------
 # GET JOB LIST
 # -----------------------------
-def get_jobs(start):
-    params = {
-        "keywords": "data OR software OR analyst",
-        "location": "Europe",
-        "f_TPR": "r2592000",
-        "start": start
-    }
+def get_details(link):
+    try:
+        r = requests.get(link, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
 
-    r = requests.get(URL, params=params, headers=HEADERS, timeout=10)
+        def sel(css):
+            el = soup.select_one(css)
+            return el.text.strip() if el else None
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    cards = soup.select(".base-card")
+        return {
+            "description": sel(".description__text"),
 
-    jobs = []
+            "seniority": sel(
+                ".description__job-criteria-item:nth-child(1) "
+                ".description__job-criteria-text--criteria"
+            ),
 
-    for job in cards:
-        jobs.append({
-            "title": job.select_one(".base-search-card__title").text.strip() if job.select_one(".base-search-card__title") else None,
-            "company": job.select_one(".base-search-card__subtitle").text.strip() if job.select_one(".base-search-card__subtitle") else None,
-            "location": job.select_one(".job-search-card__location").text.strip() if job.select_one(".job-search-card__location") else None,
-            "date": job.select_one("time")["datetime"] if job.select_one("time") else None,
-            "link": job.select_one("a")["href"] if job.select_one("a") else None
-        })
+            "employment": sel(
+                ".description__job-criteria-item:nth-child(2) "
+                ".description__job-criteria-text--criteria"
+            ),
 
-    return jobs
+            "function": sel(
+                ".description__job-criteria-item:nth-child(3) "
+                ".description__job-criteria-text--criteria"
+            ),
+
+            "industry": sel(
+                ".description__job-criteria-item:nth-child(4) "
+                ".description__job-criteria-text--criteria"
+            ),
+        }
+
+    except Exception as e:
+        print("Error:", e)
+        return {}
 
 
 # -----------------------------
