@@ -73,7 +73,7 @@ def get_jobs_until_limit():
 def run():
     df = get_jobs_until_limit()
     print("Total jobs:", len(df))
-    df.to_csv("jobs.csv", index=False)
+    df.to_csv("data/jobs.csv", index=False)
 
 
 if __name__ == "__main__":
